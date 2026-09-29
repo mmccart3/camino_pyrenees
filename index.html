@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Random Photo Carousel</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #131b2e;
+      --accent: #38bdf8;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .carousel-wrapper {
+      width: 100%;
+      max-width: 900px;
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 0.75rem;
+    }
+
+    .header-bar h1 {
+      font-size: 1.25rem;
+      color: var(--accent);
+    }
+
+    .counter {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .viewport {
+      position: relative;
+      width: 100%;
+      height: 520px;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .viewport img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      user-select: none;
+      transition: opacity 0.3s ease-in-out;
+    }
+
+    .meta-tag {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+    }
+
+    .nav-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-size: 1.8rem;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .nav-btn:hover {
+      background: rgba(0, 0, 0, 0.85);
+      transform: translateY(-50%) scale(1.05);
+    }
+
+    .prev-btn { left: 14px; }
+    .next-btn { right: 14px; }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .action-btn:hover {
+      background: #334155;
+      color: #fff;
+    }
+
+    .action-btn.active {
+      background: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+      border-color: var(--accent);
+    }
+
+    #statusMessage {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 2rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="carousel-wrapper">
+    <div class="header-bar">
+      <h1>Photo Stream</h1>
+      <span class="counter" id="counter">Loading...</span>
+    </div>
+
+    <div class="viewport" id="viewport">
+      <div id="statusMessage">Scanning images...</div>
+      <img id="currentImage" style="display: none;" alt="Photo">
+      <div class="meta-tag" id="metaTag" style="display: none;"></div>
+      <button class="nav-btn prev-btn" id="prevBtn" style="display: none;">‹</button>
+      <button class="nav-btn next-btn" id="nextBtn" style="display: none;">›</button>
+    </div>
+
+    <div class="controls">
+      <button class="action-btn" id="reshuffleBtn">🔀 Reshuffle</button>
+      <button class="action-btn" id="autoPlayBtn">▶ Auto-play</button>
+      <button class="action-btn" id="muteBtn" style="display: none;">🔊 Sound On</button>
+    </div>
+  </div>
+
+  <!-- Audio track -->
+  <audio id="bgMusic" src="audio/sound.mp3" preload="auto" loop></audio>
+
+  <script>
+    const waRegex = /WhatsApp Image (\d{4}-\d{2}-\d{2}) at (\d{2})[.:](\d{2})[.:](\d{2})/;
+
+    let photos = [];
+    let currentIndex = 0;
+    let autoPlayTimer = null;
+
+    const imgEl = document.getElementById('currentImage');
+    const metaTag = document.getElementById('metaTag');
+    const counterEl = document.getElementById('counter');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const statusMsg = document.getElementById('statusMessage');
+    const reshuffleBtn = document.getElementById('reshuffleBtn');
+    const autoPlayBtn = document.getElementById('autoPlayBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const bgMusic = document.getElementById('bgMusic');
+
+    // Fisher-Yates shuffle
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    function parseMeta(filename) {
+      const match = filename.match(waRegex);
+      if (match) {
+        const [_, dateStr, hh, mm] = match;
+        const dateObj = new Date(`${dateStr}T00:00:00`);
+        const formattedDate = dateObj.toLocaleDateString(undefined, {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        });
+        return `${formattedDate} · ${hh}:${mm}`;
+      }
+      return filename;
+    }
+
+    function renderSlide(index) {
+      if (!photos.length) return;
+      currentIndex = (index + photos.length) % photos.length;
+      const file = photos[currentIndex];
+
+      imgEl.src = `images/${encodeURIComponent(file)}`;
+      metaTag.textContent = parseMeta(file);
+      counterEl.textContent = `${currentIndex + 1} of ${photos.length}`;
+    }
+
+    // Load images
+    fetch('images.json')
+      .then(res => {
+        if (!res.ok) throw new Error('Could not find images.json');
+        return res.json();
+      })
+      .then(data => {
+        photos = shuffle(data);
+        if (photos.length === 0) {
+          statusMsg.textContent = 'No images found in images.json.';
+          return;
+        }
+
+        statusMsg.style.display = 'none';
+        imgEl.style.display = 'block';
+        metaTag.style.display = 'block';
+        prevBtn.style.display = 'flex';
+        nextBtn.style.display = 'flex';
+        muteBtn.style.display = 'inline-block';
+
+        renderSlide(0);
+      })
+      .catch(err => {
+        statusMsg.innerHTML = `⚠️ ${err.message}<br><small style="color:#64748b; margin-top:8px; display:block;">Make sure you generated images.json and are serving via <code>python3 -m http.server</code></small>`;
+      });
+
+    // Navigation
+    prevBtn.addEventListener('click', () => renderSlide(currentIndex - 1));
+    nextBtn.addEventListener('click', () => renderSlide(currentIndex + 1));
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') renderSlide(currentIndex - 1);
+      if (e.key === 'ArrowRight') renderSlide(currentIndex + 1);
+    });
+
+    reshuffleBtn.addEventListener('click', () => {
+      photos = shuffle(photos);
+      renderSlide(0);
+    });
+
+    // Auto-play and Music synchronization
+    function startAutoPlay() {
+      autoPlayTimer = setInterval(() => renderSlide(currentIndex + 1), 3500);
+      autoPlayBtn.textContent = '⏸ Pause';
+      autoPlayBtn.classList.add('active');
+
+      // Browsers require a user click before playing audio, which this button provides
+      bgMusic.play().catch(err => {
+        console.warn('Audio play was prevented or file missing:', err);
+      });
+    }
+
+    function stopAutoPlay() {
+      clearInterval(autoPlayTimer);
+      autoPlayTimer = null;
+      autoPlayBtn.textContent = '▶ Auto-play';
+      autoPlayBtn.classList.remove('active');
+
+      bgMusic.pause();
+    }
+
+    autoPlayBtn.addEventListener('click', () => {
+      if (autoPlayTimer) {
+        stopAutoPlay();
+      } else {
+        startAutoPlay();
+      }
+    });
+
+    // Mute/Unmute toggle
+    muteBtn.addEventListener('click', () => {
+      bgMusic.muted = !bgMusic.muted;
+      muteBtn.textContent = bgMusic.muted ? '🔇 Muted' : '🔊 Sound On';
+    });
+  </script>
+</body>
+</html>
